@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Maine Hunt Map</title>
+<meta name="theme-color" content="#1b2016">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hunt Map">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{
+  --bg:#1b2016; --panel:#232a1d; --panel2:#2c3424; --line:#3d4733; --text:#eef0e6; --muted:#a3ab94;
+  --orange:#ff6a13; --green:#5fd068; --red:#ff4d4d; --yellow:#ffd23f; --blue:#5ab4ff;
+  --st:env(safe-area-inset-top,0px); --sb:env(safe-area-inset-bottom,0px);
+  --sl:env(safe-area-inset-left,0px); --sr:env(safe-area-inset-right,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:15px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden;overscroll-behavior:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+#map{position:fixed;inset:0;background:#2b2f27}
+.leaflet-control-attribution{font-size:9px!important;background:rgba(0,0,0,.45)!important;color:#ccc!important;margin-bottom:calc(64px + var(--sb))!important}
+.leaflet-control-attribution a{color:#ddd!important}
+.leaflet-control-scale{margin-bottom:calc(92px + var(--sb))!important;margin-left:calc(10px + var(--sl))!important}
+.leaflet-control-scale-line{background:rgba(0,0,0,.5);color:#fff;border-color:#fff}
+
+/* top status bar */
+#top{position:fixed;left:0;right:0;top:0;padding:calc(var(--st) + 6px) calc(var(--sr) + 8px) 6px calc(var(--sl) + 8px);display:flex;gap:6px;z-index:1000;pointer-events:none}
+.chip{pointer-events:auto;background:rgba(27,32,22,.92);border:1px solid var(--line);border-radius:12px;padding:6px 10px;display:flex;align-items:center;gap:6px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 2px 8px rgba(0,0,0,.35);min-height:42px}
+#chipWmd{flex:0 0 auto;flex-direction:column;align-items:flex-start;gap:0;justify-content:center}
+#chipWmd small,#chipHours small,#chipWind small{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+#chipWmd b{font-size:17px}
+#chipHours{flex:1 1 auto;min-width:0}
+#chipHours .t{display:flex;flex-direction:column;min-width:0}
+#chipHours b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dot{width:12px;height:12px;border-radius:50%;flex:0 0 12px;background:var(--muted)}
+.dot.on{background:var(--green);box-shadow:0 0 8px var(--green)}
+.dot.off{background:var(--red)}
+.dot.soon{background:var(--yellow)}
+#chipWind{flex:0 0 auto}
+#chipWind .t{display:flex;flex-direction:column}
+#chipWind b{font-size:14px;white-space:nowrap}
+.warrow{width:22px;height:22px;transition:transform .4s}
+
+/* right-side buttons */
+#fabs{position:fixed;right:calc(var(--sr) + 10px);top:calc(var(--st) + 64px);display:flex;flex-direction:column;gap:8px;z-index:1000}
+.fab{width:46px;height:46px;border-radius:12px;background:rgba(27,32,22,.92);border:1px solid var(--line);display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+.fab svg{width:24px;height:24px}
+.fab.active{background:var(--orange);border-color:var(--orange)}
+.fab.follow{background:var(--blue);border-color:var(--blue)}
+#fabNorth svg{transition:transform .2s}
+
+/* crosshair + coordinate readout */
+#cross{position:fixed;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;z-index:900;pointer-events:none;display:none}
+#cross.show{display:block}
+#coords{position:fixed;left:calc(var(--sl) + 10px);bottom:calc(var(--sb) + 64px + 6px);z-index:1000;background:rgba(0,0,0,.55);border-radius:8px;padding:4px 8px;font:12px/1.3 ui-monospace,Menlo,monospace;color:#fff}
+#recBadge{position:fixed;right:calc(var(--sr) + 10px);bottom:calc(var(--sb) + 70px);z-index:1000;background:var(--red);color:#fff;border-radius:999px;padding:5px 12px;font-weight:700;font-size:13px;display:none}
+#recBadge.show{display:block;animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.6}}
+
+/* bottom nav */
+#nav{position:fixed;left:0;right:0;bottom:0;z-index:1300;height:calc(58px + var(--sb));background:rgba(27,32,22,.97);border-top:1px solid var(--line);display:flex;padding:0 var(--sr) var(--sb) var(--sl)}
+#nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0 7px;font-size:11px;color:var(--muted)}
+#nav button svg{width:24px;height:24px}
+#nav button.on{color:var(--orange)}
+
+/* sheet */
+#sheet{position:fixed;left:0;right:0;bottom:calc(58px + var(--sb));z-index:1200;background:var(--panel);border-radius:18px 18px 0 0;border-top:1px solid var(--line);max-height:calc(100% - var(--st) - 58px - var(--sb) - 60px);display:flex;flex-direction:column;transform:translateY(calc(100% + 70px + var(--sb)));transition:transform .25s ease;box-shadow:0 -6px 24px rgba(0,0,0,.5)}
+#sheet.open{transform:none}
+#sheet header{display:flex;align-items:center;padding:12px 14px 8px;gap:8px}
+#sheet header h2{margin:0;font-size:18px;flex:1}
+#sheet header .x{width:34px;height:34px;border-radius:50%;background:var(--panel2);font-size:20px;line-height:1}
+#sheetBody{overflow:auto;padding:0 14px 16px;-webkit-overflow-scrolling:touch}
+.grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:8px auto 0}
+
+/* ui bits */
+.row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row .grow{flex:1;min-width:0}
+.row .sub{color:var(--muted);font-size:12.5px}
+.btn{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.btn.primary{background:var(--orange);border-color:var(--orange);color:#fff}
+.btn.danger{background:#5a1f1f;border-color:#7a2a2a}
+.btn.sm{padding:6px 10px;font-size:13px;border-radius:8px}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.btns .btn{flex:1 1 auto}
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0}
+.big{font-size:28px;font-weight:800;letter-spacing:-.01em}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+h3{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:16px 0 4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kv{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.kv small{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.kv b{font-size:17px}
+input[type=text],textarea,select,input[type=number]{width:100%;background:#151a11;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px;font:inherit}
+textarea{min-height:70px;resize:vertical}
+label.f{display:block;margin:10px 0 4px;color:var(--muted);font-size:12.5px}
+.switch{position:relative;width:46px;height:28px;flex:0 0 46px}
+.switch input{opacity:0;width:0;height:0}
+.switch span{position:absolute;inset:0;background:#3a4430;border-radius:999px;transition:.2s}
+.switch span:before{content:"";position:absolute;width:22px;height:22px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+.switch input:checked+span{background:var(--orange)}
+.switch input:checked+span:before{transform:translateX(18px)}
+.radio{display:flex;gap:6px;flex-wrap:wrap}
+.radio button{flex:1 1 30%;padding:10px 6px;border-radius:10px;background:var(--panel2);border:2px solid var(--line);font-size:13px;font-weight:600}
+.radio button.on{border-color:var(--orange);color:var(--orange)}
+.types{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.types button{padding:8px 2px;border-radius:10px;background:var(--panel2);border:2px solid var(--line);font-size:11px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.types button .e{font-size:22px}
+.types button.on{border-color:var(--orange)}
+table.hrs{width:100%;border-collapse:collapse;font-size:13.5px}
+table.hrs td,table.hrs th{padding:7px 4px;border-bottom:1px solid var(--line);text-align:left}
+table.hrs th{color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase}
+table.hrs tr.today td{color:var(--orange);font-weight:700}
+table.hrs tr.sun td{color:var(--muted);text-decoration:line-through}
+.hourly{display:flex;gap:6px;overflow-x:auto;padding:4px 0 8px}
+.hourly .h{flex:0 0 62px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:6px 4px;text-align:center;font-size:12px}
+.hourly .h.sel{border-color:var(--orange)}
+.hourly .h svg{width:22px;height:22px;display:block;margin:4px auto}
+.season{padding:9px 0;border-bottom:1px solid var(--line)}
+.season .open{color:var(--green);font-weight:700;font-size:12px}
+.season .closed{color:var(--muted);font-size:12px}
+.season .soon{color:var(--yellow);font-weight:700;font-size:12px}
+.warn{background:#3d2a12;border:1px solid #6b4718;border-radius:10px;padding:10px;font-size:13px;margin:10px 0}
+.progress{height:8px;background:#151a11;border-radius:4px;overflow:hidden;margin:8px 0}
+.progress div{height:100%;background:var(--orange);width:0;transition:width .2s}
+/* compass */
+#rose{width:min(72vw,280px);height:min(72vw,280px);margin:8px auto;display:block}
+#rose .dial{transition:transform .15s linear}
+/* toast */
+#toast{position:fixed;left:50%;top:calc(var(--st) + 70px);transform:translateX(-50%) translateY(-20px);background:#000c;color:#fff;padding:9px 14px;border-radius:10px;z-index:3000;opacity:0;transition:.25s;pointer-events:none;font-size:14px;max-width:88vw;text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%)}
+/* modal */
+#modal{position:fixed;inset:0;background:#0009;z-index:2500;display:none;align-items:center;justify-content:center;padding:20px}
+#modal.show{display:flex}
+#modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;max-width:380px;width:100%}
+/* map markers */
+.pin{width:34px;height:34px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:grid;place-items:center;border:2px solid #fff;box-shadow:0 2px 6px #0008}
+.pin span{transform:rotate(45deg);font-size:17px;line-height:1}
+.me{position:relative;width:22px;height:22px}
+.me .c{position:absolute;inset:3px;border-radius:50%;background:var(--blue);border:3px solid #fff;box-shadow:0 0 0 2px #0006}
+.me .cone{position:absolute;left:-29px;top:-29px;width:80px;height:80px;display:none}
+.me.hd .cone{display:block}
+.wmdlabel{background:none!important;border:0!important;box-shadow:none!important;color:#ffb27a;font-weight:800;font-size:14px;text-shadow:0 0 3px #000,0 0 3px #000}
+.leaflet-tooltip.mlabel{background:#000b;color:#fff;border:0;font-weight:700;font-size:12px}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--panel);color:var(--text)}
+.leaflet-popup-content{margin:10px 12px;font-size:13px}
+.leaflet-popup-content b{color:var(--orange)}
+.leaflet-container a.leaflet-popup-close-button{color:#ccc}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="top">
+  <button class="chip" id="chipWmd" data-open="hours"><small>WMD</small><b id="wmdVal">--</b></button>
+  <button class="chip" id="chipHours" data-open="hours"><span class="dot" id="hrsDot"></span><span class="t"><small id="hrsLabel">Legal hours</small><b id="hrsVal">Waiting for GPS…</b></span></button>
+  <button class="chip" id="chipWind" data-open="wind"><svg class="warrow" id="windArrow" viewBox="0 0 24 24"><path d="M12 2l5 14-5-3-5 3z" fill="#5ab4ff"/></svg><span class="t"><small>Wind</small><b id="windVal">--</b></span></button>
+</div>
+
+<div id="fabs">
+  <button class="fab" id="fabLayers" aria-label="Map layers"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg></button>
+  <button class="fab" id="fabLocate" aria-label="My location"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+  <button class="fab" id="fabNorth" aria-label="Compass"><svg viewBox="0 0 24 24"><path d="M12 2l4 10h-8z" fill="#ff4d4d"/><path d="M12 22l-4-10h8z" fill="#ddd"/></svg></button>
+  <button class="fab" id="fabScent" aria-label="Scent cone"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M4 12h9M4 7h12a3 3 0 1 0-3-3M4 17h14a3 3 0 1 1-3 3"/></svg></button>
+</div>
+
+<svg id="cross" viewBox="0 0 34 34"><circle cx="17" cy="17" r="10" fill="none" stroke="#fff" stroke-width="3"/><circle cx="17" cy="17" r="10" fill="none" stroke="#ff6a13" stroke-width="1.5"/><path d="M17 0v10M17 24v10M0 17h10M24 17h10" stroke="#fff" stroke-width="3"/><path d="M17 0v10M17 24v10M0 17h10M24 17h10" stroke="#ff6a13" stroke-width="1.5"/></svg>
+<div id="coords">--</div>
+<div id="recBadge">● REC <span id="recStat"></span></div>
+
+<nav id="nav">
+  <button data-open="pins"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s7-7 7-12a7 7 0 1 0-14 0c0 5 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>Pins</button>
+  <button data-open="track"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19c4 0 3-6 8-6s4-6 8-6"/><circle cx="4" cy="19" r="2"/><circle cx="20" cy="7" r="2"/></svg>Track</button>
+  <button data-open="wind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h11a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h8"/></svg>Weather</button>
+  <button data-open="hours"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Hours</button>
+  <button data-open="seasons"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Seasons</button>
+  <button data-open="tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>More</button>
+</nav>
+
+<section id="sheet" aria-hidden="true">
+  <div class="grab"></div>
+  <header><h2 id="sheetTitle"></h2><button class="x" id="sheetClose" aria-label="Close">×</button></header>
+  <div id="sheetBody"></div>
+</section>
+
+<div id="modal"><div class="box" id="modalBox"></div></div>
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="geo.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
